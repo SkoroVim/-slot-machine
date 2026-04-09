@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎰</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎰</text></svg>">
+    
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        :root {
+            --glow-color: #ff2a2a; /* Červený glow inspirovaný 🎰 emoji */
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            color: white;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Emoji místo nadpisu na stránce */
+        .page-emoji-title {
+            font-size: 3.5rem;
+            margin-bottom: 20px;
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.2));
+        }
+
+        .slot-machine {
+            background: #111;
+            padding: 30px; /* Zvětšeno padding */
+            border-radius: 25px;
+            border: 4px solid var(--glow-color); /* Ztlustěn border */
+            box-shadow: 0 0 50px var(--glow-color), inset 0 0 30px rgba(255, 42, 42, 0.5); /* Větší glow */
+            display: flex;
+            gap: 20px; /* Větší mezera */
+            margin-bottom: 50px;
+        }
+
+        .reel {
+            background: #fff;
+            width: 120px; /* Výrazně zvětšeno */
+            height: 160px; /* Výrazně zvětšeno */
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 6rem; /* Větší symboly */
+            box-shadow: inset 0 12px 20px rgba(0,0,0,0.5);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .reel span {
+            position: absolute;
+            transition: transform 0.08s ease-out; /* Trochu agresivnější stop */
+        }
+
+        .blur {
+            filter: blur(4px); /* Větší rozmazání při točení */
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 25px;
+        }
+
+        button {
+            background: transparent;
+            color: #00ffaa;
+            border: 3px solid #00ffaa; /* Ztlustěn border */
+            padding: 18px 60px; /* Větší tlačítko */
+            font-size: 1.8rem; /* Větší font */
+            font-weight: bold;
+            border-radius: 60px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            box-shadow: 0 0 20px rgba(0, 255, 170, 0.5);
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            background: #00ffaa;
+            color: #000;
+            box-shadow: 0 0 35px #00ffaa;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        button:disabled {
+            border-color: #444;
+            color: #444;
+            box-shadow: none;
+            cursor: not-allowed;
+            background: transparent;
+        }
+
+        .message {
+            height: 40px;
+            font-size: 1.8rem; /* Větší nápis výhry */
+            color: #ffaa00;
+            text-shadow: 0 0 15px #ffaa00;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .show-message {
+            opacity: 1;
+        }
+
+        /* Responsivita pro mobily - zmenšení pokud je displej malý */
+        @media (max-width: 500px) {
+            .page-emoji-title { font-size: 2.5rem; margin-bottom: 10px; }
+            .slot-machine { padding: 15px; gap: 10px; border-width: 3px;}
+            .reel { width: 80px; height: 110px; font-size: 4rem; }
+            button { padding: 14px 45px; font-size: 1.4rem; }
+            .message { font-size: 1.4rem;}
+        }
+    </style>
+</head>
+<body>
+
+    <div class="page-emoji-title">🎰</div>
+
+    <div class="slot-machine">
+        <div class="reel" id="reel1"><span>🍒</span></div>
+        <div class="reel" id="reel2"><span>🍒</span></div>
+        <div class="reel" id="reel3"><span>🍒</span></div>
+    </div>
+
+    <div class="controls">
+        <button id="spinBtn">HRÁT</button>
+        <div class="message" id="message">JACKPOT! 🔥</div>
+    </div>
+
+    <script>
+        const symbols = ['🍒', '🍋', '🍉', '⭐', '🔔', '💎', '7️⃣'];
+        const reels = [
+            document.querySelector('#reel1 span'),
+            document.querySelector('#reel2 span'),
+            document.querySelector('#reel3 span')
+        ];
+        const spinBtn = document.getElementById('spinBtn');
+        const messageEl = document.getElementById('message');
+
+        // Web Audio API
+        let audioCtx;
+        
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Agresivnější "mechanický" zvuk točení
+        function playTickSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            // Hrubší vlna
+            osc.type = 'sawtooth'; 
+            
+            // Hlasitější
+            const volume = 0.15;
+
+            // Rychlý spád frekvence pro "kopnutí"
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.03);
+            
+            gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.03);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.03);
+        }
+
+        // Agresivnější arkádový zvuk výhry
+        function playWinSound() {
+            if (!audioCtx) return;
+            
+            const now = audioCtx.currentTime;
+            const volume = 0.3; // Hlasitější
+
+            // Rychlý sled agresivních tónů
+            const playTone = (freq, startTime, duration, type='square') => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, startTime);
+                
+                gain.gain.setValueAtTime(volume, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+                
+                osc.start(startTime);
+                osc.stop(startTime + duration);
+            }
+
+            // Arkádový "laser" efekt nahoru
+            for(let i=0; i<8; i++) {
+                playTone(400 + (i*150), now + (i*0.06), 0.1, 'sawtooth');
+            }
+            // Závěrečný silný tón
+            playTone(2000, now + 0.5, 0.5, 'square');
+        }
+
+        function triggerConfetti() {
+            const duration = 2500;
+            const end = Date.now() + duration;
+
+            (function frame() {
+                confetti({
+                    particleCount: 7,
+                    angle: 60,
+                    spread: 60,
+                    origin: { x: 0, y: 0.6 },
+                    colors: ['#ff2a2a', '#00ffaa', '#ffffff']
+                });
+                confetti({
+                    particleCount: 7,
+                    angle: 120,
+                    spread: 60,
+                    origin: { x: 1, y: 0.6 },
+                    colors: ['#ff2a2a', '#00ffaa', '#ffffff']
+                });
+
+                if (Date.now() < end) {
+                    requestAnimationFrame(frame);
+                }
+            }());
+        }
+
+        function getRandomSymbol() {
+            return symbols[Math.floor(Math.random() * symbols.length)];
+        }
+
+        function spin() {
+            initAudio();
+            spinBtn.disabled = true;
+            messageEl.classList.remove('show-message');
+            
+            // --- NASTAVENÍ ŠANCE ---
+            // Zvýšeno na 0.25 (25% šance na GARANTOVANOU výhru předem)
+            const forceWinChance = 0.25; 
+            
+            let finalResults = [];
+            if (Math.random() < forceWinChance) {
+                // Vynutit výhru
+                const winSymbol = getRandomSymbol();
+                finalResults = [winSymbol, winSymbol, winSymbol];
+            } else {
+                // Čistě náhodné výsledky (pořád může náhodou padnout výhra)
+                finalResults = [getRandomSymbol(), getRandomSymbol(), getRandomSymbol()];
+            }
+
+            let spins = 0;
+            const maxSpins = 25; // Trochu delší točení
+            const spinInterval = 80; // Trochu rychlejší točení
+
+            reels.forEach(r => r.classList.add('blur'));
+
+            const interval = setInterval(() => {
+                reels.forEach(reel => {
+                    reel.innerText = getRandomSymbol();
+                });
+                playTickSound();
+                spins++;
+
+                if (spins >= maxSpins) {
+                    clearInterval(interval);
+                    
+                    // Zastavování s agresivnějším zpožděním
+                    setTimeout(() => stopReel(0, finalResults[0]), 100);
+                    setTimeout(() => stopReel(1, finalResults[1]), 400);
+                    setTimeout(() => stopReel(2, finalResults[2], true), 700);
+                }
+            }, spinInterval);
+        }
+
+        function stopReel(index, finalSymbol, isLast = false) {
+            reels[index].classList.remove('blur');
+            reels[index].innerText = finalSymbol;
+            playTickSound(); // Hlasitější stop zvuk
+
+            if (isLast) {
+                const finalSymbols = reels.map(r => r.innerText);
+                checkWin(finalSymbols);
+                spinBtn.disabled = false;
+            }
+        }
+
+        function checkWin(results) {
+            if (results[0] === results[1] && results[1] === results[2]) {
+                // Nastavení zprávy podle symbolu
+                if(results[0] === '7️⃣') { messageEl.innerText = "GRAND JACKPOT! 🔥🔥🔥"; }
+                else if (results[0] === '💎') { messageEl.innerText = "DIAMOND WIN! 💎✨"; }
+                else { messageEl.innerText = "VÝHRA! 🎉"; }
+
+                messageEl.classList.add('show-message');
+                playWinSound();
+                triggerConfetti();
+            }
+        }
+
+        spinBtn.addEventListener('click', spin);
+    </script>
+</body>
+</html>
